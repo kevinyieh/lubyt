@@ -6,16 +6,23 @@ A custom **64×32 Tidbyt LED matrix app** written in **Pixlet Starlark** featuri
 
 ## Features
 
-- **Compact Left HUD (23×32 px + 1px divider):** Clean static clock displaying day of the week (`WED P` or `WED`), current time (`HH:MM` in `tb-8`), live temperature (`°F` or `°C` in `5x8`), and a color-themed weather label (`SUNNY`, `RAINY`, `SNOWY`, `WINDY`, `STORM`, `CLEAR`, `CLOUD`, `FOGGY`).
-- **Expanded Right Stage (40×32 px):** Dynamically selected 15-second seamless personality storyboards (`150 frames @ 100 ms = 15.0s`, `loop=0`) inspired by **Lumei & Lulu (噜噜与噜妹)** — contrasting expressive, adorably "spicy" Lumei with chill, phone-glued, secretly sweet Lulu:
-  | State | WMO Codes / Trigger | 15-Second Storyboard |
-  | :--- | :--- | :--- |
-  | `sunny` | `0, 1` (daytime) | Greedy Lulu gobbles the watermelon → spicy Lumei scolds him with steam puffs → Lulu walks off-screen & returns with a fresh slice → instant hearts |
-  | `rainy` | `51–57, 61–67, 80–82` | Phone-glued Lulu drifts off with the blue umbrella → soaked spicy Lumei yanks it back → Lulu sheepishly shares it & hearts float up |
-  | `snowy` | `71–77, 85–86` | Playful Lulu pelts Lumei with a snowball → Lumei packs a giant snowball & chases Lulu toward the screen edge → happy snowy truce |
-  | `windy` | Wind ≥ `25 km/h` (dry) | Mega gust blows Lulu's tangerine & Lulu completely off-screen → Lumei sprints off-screen to rescue him (empty windy stage beat!) → drags dizzy Lulu back |
-  | `thunderstorm` | `95, 96, 99` | Overconfident Lulu sits outside the blanket → huge lightning flash sends him leaping head-first under the starry blanket with Lumei |
-  | `default` | `2, 3, 45, 48` or clear night | Reference-photo phone gag: Lulu glued to his phone → spicy Lumei marches over & snatches it → sweet nuzzle & twin hearts |
+- **Ultra-Minimal Upper-Left Corner HUD (20×12 px):** Displays **only** the current time (`HH:MM`) and temperature (`42°`, no F/C suffix) in crisp `tom-thumb` over a subtle translucent backing — leaving the entire **64×32 px** screen for the animations to tell you the weather and time of day visually!
+- **Automatic Sunrise / Sunset Day & Night Switching:** Fetches today's local `daily.sunrise` and `daily.sunset` alongside live weather from Open-Meteo and automatically switches every weather condition between its **Day** and **Night** animation at sunset/sunrise.
+- **Complete Open-Meteo WMO Weather Coverage (24 Full-Screen 64×32 Storyboards — 12 Weather Types × Day & Night):**
+  | Weather | Open-Meteo Trigger | Day Storyboard | Night Storyboard |
+  | :--- | :--- | :--- | :--- |
+  | `clear` | WMO `0, 1` | **Watermelon Heist:** Greedy Lulu gobbles it → spicy Lumei steam-stomps → Lulu walks off-screen & returns with a fresh slice | **Telescope Stargazing:** Brass telescope, crescent moon & twin shooting stars — Lumei & Lulu take turns stargazing and making wishes |
+  | `partly_cloudy` | WMO `2` | **Sunny Checkered Picnic:** Lumei eats all the picnic food → Lulu gets sad (`💧`) → Lumei sprints off-screen & brings back a giant strawberry cake! | **Moonlit Picnic:** Same adorable picnic role-reversal on a starry night with a warm glowing lantern |
+  | `overcast` | WMO `3` | Sleepy overcast clouds put Lulu to sleep (`Zzz`) → spicy Lumei wakes him → cozy cuddle | Deep overcast night with warm lantern → sleepy cuddle |
+  | `fog` | WMO `45, 48` | Lulu wanders off-screen into daylight mist → Lumei searches (`?`) → happy reunion | Moonlit night fog — Lumei carries a glowing lantern searching for Lulu |
+  | `drizzle` | WMO `51–55` | Cheerful Lumei puddle-splashes phone-holding Lulu → Lulu splashes right back | Deep twilight drizzle & moonlit puddle splashes |
+  | `freezing_rain` | WMO `56–57, 66–67` | Overconfident Lulu slips on the ice sheet & slides off-screen → Lumei glides to rescue him | Moonlit midnight ice rink wipeout & rescue |
+  | `rain` | WMO `61–65` | Phone-glued Lulu drifts off hogging the blue umbrella → soaked spicy Lumei yanks it back | Midnight navy rainstorm umbrella tug-of-war |
+  | `rain_showers` | WMO `80–82` | Sudden shower sends both off-screen → clears into bright sun & **vivid 6-color Rainbow** | Night cloudburst → clears into crescent moon & shimmering **Moonbow** |
+  | `snow` | WMO `71–77, 85–86` | Frosted winter daylight snowball fight & giant-snowball off-screen chase | Starry midnight snow & glowing crescent moon snowball fight |
+  | `thunderstorm` | WMO `95` | Afternoon storm — overconfident Lulu sits outside blanket → lightning sends him leaping inside | Pitch-black midnight thunderstorm with blazing lightning flashes |
+  | `thunderstorm_hail` | WMO `96, 99` | Afternoon bouncing hailstones bonk Lulu → sturdy silver shield huddle | Pitch-dark midnight hailstorm & ricocheting hail sparks |
+  | `windy` | Wind ≥ `25 km/h` (dry) | Bright breezy gusts blow Lulu & tangerine off-screen → Lumei sprints off-screen & drags him back | Starry breezy night mega-gust off-screen rescue |
 - **Free Open-Meteo API:** Zero API keys required, with 12-minute caching (`cache.get`/`cache.set` + `http.get(..., ttl_seconds=720)`) to avoid rate limits.
 - **Mathematically Seamless 15-Second Loops:**
   - All idle bobbing/blinking oscillators use periods dividing `150` (`30`, `50`, `75` frames).

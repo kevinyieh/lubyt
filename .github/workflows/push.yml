@@ -7,7 +7,11 @@ on:
   workflow_dispatch:
     inputs:
       debug_weather:
-        description: "Optional weather state override (auto, sunny, rainy, snowy, windy, thunderstorm, default)"
+        description: "Optional weather state override (auto, clear, partly_cloudy, overcast, fog, drizzle, freezing_rain, rain, rain_showers, snow, thunderstorm, thunderstorm_hail, windy)"
+        required: false
+        default: "auto"
+      debug_time_of_day:
+        description: "Optional time of day override (auto, day, night)"
         required: false
         default: "auto"
 
@@ -49,15 +53,17 @@ jobs:
           USE_24H: ${{ vars.CAPYBARA_USE_24H }}
           TEMP_UNIT: ${{ vars.CAPYBARA_TEMP_UNIT }}
           DEBUG_WEATHER: ${{ github.event.inputs.debug_weather || 'auto' }}
+          DEBUG_TIME_OF_DAY: ${{ github.event.inputs.debug_time_of_day || 'auto' }}
         run: |
           ARGS=()
-          [ -n "$LATITUDE" ]      && ARGS+=("latitude=${LATITUDE}")
-          [ -n "$LONGITUDE" ]     && ARGS+=("longitude=${LONGITUDE}")
-          [ -n "$ZIP_CODE" ]      && ARGS+=("zip_code=${ZIP_CODE}")
-          [ -n "$TIMEZONE" ]      && ARGS+=("timezone=${TIMEZONE}")
-          [ -n "$USE_24H" ]       && ARGS+=("use_24h=${USE_24H}")
-          [ -n "$TEMP_UNIT" ]     && ARGS+=("temp_unit=${TEMP_UNIT}")
-          [ -n "$DEBUG_WEATHER" ] && ARGS+=("debug_weather=${DEBUG_WEATHER}")
+          [ -n "$LATITUDE" ]          && ARGS+=("latitude=${LATITUDE}")
+          [ -n "$LONGITUDE" ]         && ARGS+=("longitude=${LONGITUDE}")
+          [ -n "$ZIP_CODE" ]          && ARGS+=("zip_code=${ZIP_CODE}")
+          [ -n "$TIMEZONE" ]          && ARGS+=("timezone=${TIMEZONE}")
+          [ -n "$USE_24H" ]           && ARGS+=("use_24h=${USE_24H}")
+          [ -n "$TEMP_UNIT" ]         && ARGS+=("temp_unit=${TEMP_UNIT}")
+          [ -n "$DEBUG_WEATHER" ]     && ARGS+=("debug_weather=${DEBUG_WEATHER}")
+          [ -n "$DEBUG_TIME_OF_DAY" ] && ARGS+=("debug_time_of_day=${DEBUG_TIME_OF_DAY}")
 
           pixlet render capybara_clock.star "${ARGS[@]}" -o capybara_clock.webp
           ls -lh capybara_clock.webp
