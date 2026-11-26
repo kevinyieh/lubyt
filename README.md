@@ -153,9 +153,25 @@ For a clock that stays exact to the minute (firing at `:02` past every minute vi
 - Push immediately: `./scripts/setup_mac_updater.sh --run-now`
 - Stop & uninstall: `./scripts/setup_mac_updater.sh --uninstall`
 
-### Option 2: GitHub Actions (Cloud Fallback)
+### Option 2: 24/7 Free Cloud Clock (Public GitHub Repo + `cron-job.org`)
 
-`.github/workflows/push.yml` renders and pushes `capybara_clock.star` to your Tidbyt on a 5-minute cron schedule (and supports manual `workflow_dispatch` runs with `debug_weather`, `debug_time_of_day`, and `debug_temp` overrides).
+Because GitHub's built-in `schedule:` cron is heavily delayed, you can trigger `.github/workflows/push.yml` every **1 minute** for free via [cron-job.org](https://cron-job.org) (requires the repository to be **public** for unlimited free GitHub Actions minutes; your Tidbyt secrets remain encrypted in GitHub Secrets):
+
+1. Create a **Fine-Grained Personal Access Token** on GitHub (**Settings → Developer settings → Personal access tokens → Fine-grained tokens**):
+   - **Repository access:** Only select repositories → `kevinyieh/lubyt`
+   - **Repository permissions:** `Actions` → **Read and write** (nothing else!)
+2. On [cron-job.org](https://cron-job.org), create a new Cronjob:
+   - **URL:** `https://api.github.com/repos/kevinyieh/lubyt/actions/workflows/push.yml/dispatches`
+   - **Execution schedule:** Every `1` minute
+   - **Advanced → Request method:** `POST`
+   - **Advanced → Request body:** `{"ref":"main"}`
+   - **Advanced → Headers:**
+     - `Authorization`: `Bearer <YOUR_FINE_GRAINED_TOKEN>`
+     - `Accept`: `application/vnd.github+json`
+     - `X-GitHub-Api-Version`: `2022-11-28`
+     - `User-Agent`: `capybara-clock-cron`
+
+The workflow uses sparse checkout (`capybara_clock.star` only) + a cached `pixlet` binary so each 1-minute push completes in ~6–10 seconds.
 
 ### Required Repository Secrets
 Add these under **Settings → Secrets and variables → Actions → Secrets**:

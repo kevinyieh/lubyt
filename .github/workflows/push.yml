@@ -1,9 +1,15 @@
 name: Render & Push Capybara Clock to Tidbyt
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "capybara_clock.star"
+      - ".github/workflows/push.yml"
   schedule:
-    # Run every 5 minutes to keep the clock and local weather fresh
-    - cron: "*/5 * * * *"
+    # Off-peak fallback cron (every 10 min); for exact 1-minute updates, trigger
+    # workflow_dispatch via cron-job.org (see README.md).
+    - cron: "3,13,23,33,43,53 * * * *"
   workflow_dispatch:
     inputs:
       debug_weather:
@@ -18,11 +24,18 @@ on:
         description: "Optional temperature tier override (auto, warm, cold)"
         required: false
         default: "auto"
+      foreground:
+        description: "Set true to jump immediately to Capybara Clock on Tidbyt (default false updates silently in rotation)"
+        required: false
+        default: "false"
 
 # Prevent overlapping pushes if a previous run is still finishing
 concurrency:
   group: tidbyt-capybara-clock-push
   cancel-in-progress: true
+
+env:
+  PIXLET_VERSION: v0.34.0
 
 jobs:
   render-and-push:
@@ -30,23 +43,37 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            capybara_clock.star
+          sparse-checkout-cone-mode: false
 
-      - name: Install libwebp runtime dependency
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebp-dev
+      - name: Cache Pixlet binary
+        id: cache-pixlet
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/pixlet
+          key: pixlet-${{ env.PIXLET_VERSION }}-linux-amd64
 
-      - name: Download and install Pixlet
+      - name: Install Pixlet & libwebp runtime
         run: |
-          PIXLET_VERSION=$(curl -fsSL https://api.github.com/repos/tidbyt/pixlet/releases/latest \
-            | grep '"tag_name":' \
-            | sed -E 's/.*"([^"]+)".*/\1/')
-          echo "Installing Pixlet ${PIXLET_VERSION}..."
-          curl -fsSLO "https://github.com/tidbyt/pixlet/releases/download/${PIXLET_VERSION}/pixlet_${PIXLET_VERSION#v}_linux_amd64.tar.gz"
-          tar -xzf "pixlet_${PIXLET_VERSION#v}_linux_amd64.tar.gz"
-          chmod +x pixlet
-          sudo mv pixlet /usr/local/bin/pixlet
-          pixlet version
+          mkdir -p ~/.local/bin
+          if [ ! -x ~/.local/bin/pixlet ]; then
+            echo "Downloading Pixlet ${PIXLET_VERSION}..."
+            curl -fsSLO "https://github.com/tidbyt/pixlet/releases/download/${PIXLET_VERSION}/pixlet_${PIXLET_VERSION#v}_linux_amd64.tar.gz"
+            tar -xzf "pixlet_${PIXLET_VERSION#v}_linux_amd64.tar.gz" pixlet
+            chmod +x pixlet
+            mv pixlet ~/.local/bin/pixlet
+            rm -f "pixlet_${PIXLET_VERSION#v}_linux_amd64.tar.gz"
+          fi
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+          # Only install libwebp if pixlet fails to start due to missing shared libs
+          if ! ~/.local/bin/pixlet version >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq libwebp-dev
+          fi
+          ~/.local/bin/pixlet version
 
       - name: Render capybara_clock.star to WebP
         env:
@@ -80,8 +107,8 @@ jobs:
               echo "::error::pixlet render failed after 3 attempts."
               exit 1
             fi
-            echo "Render attempt ${attempt} failed (transient API timeout); retrying in 4s..."
-            sleep 4
+            echo "Render attempt ${attempt} failed (transient API timeout); retrying in 3s..."
+            sleep 3
           done
           ls -lh capybara_clock.webp
 
@@ -89,18 +116,27 @@ jobs:
         env:
           TIDBYT_DEVICE_ID: ${{ secrets.TIDBYT_DEVICE_ID }}
           TIDBYT_API_KEY: ${{ secrets.TIDBYT_API_KEY }}
+          FOREGROUND: ${{ github.event.inputs.foreground || 'false' }}
+          DEBUG_WEATHER: ${{ github.event.inputs.debug_weather || 'auto' }}
+          DEBUG_TIME_OF_DAY: ${{ github.event.inputs.debug_time_of_day || 'auto' }}
+          DEBUG_TEMP: ${{ github.event.inputs.debug_temp || 'auto' }}
         run: |
           if [ -z "$TIDBYT_DEVICE_ID" ] || [ -z "$TIDBYT_API_KEY" ]; then
             echo "::error::Missing TIDBYT_DEVICE_ID or TIDBYT_API_KEY repository secrets."
             exit 1
           fi
 
-          # Push immediately to foreground on manual runs; silently in rotation on cron runs
+          # Update silently in rotation on automated 1-minute pushes;
+          # push immediately to foreground on code push, explicit foreground=true, or debug preview runs.
           PUSH_ARGS=(
             --api-token "${TIDBYT_API_KEY}"
             --installation-id "capybaraclock"
           )
-          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+          IS_DEBUG="false"
+          if [ "$DEBUG_WEATHER" != "auto" ] || [ "$DEBUG_TIME_OF_DAY" != "auto" ] || [ "$DEBUG_TEMP" != "auto" ]; then
+            IS_DEBUG="true"
+          fi
+          if [ "${{ github.event_name }}" != "push" ] && [ "$FOREGROUND" != "true" ] && [ "$IS_DEBUG" != "true" ]; then
             PUSH_ARGS+=(--background)
           fi
 
