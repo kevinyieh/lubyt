@@ -78,9 +78,13 @@ jobs:
             exit 1
           fi
 
-          pixlet push \
-            --api-token "${TIDBYT_API_KEY}" \
-            --installation-id "capybaraclock" \
-            --background \
-            "${TIDBYT_DEVICE_ID}" \
-            capybara_clock.webp
+          # Push immediately to foreground on manual runs; silently in rotation on cron runs
+          PUSH_ARGS=(
+            --api-token "${TIDBYT_API_KEY}"
+            --installation-id "capybaraclock"
+          )
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            PUSH_ARGS+=(--background)
+          fi
+
+          pixlet push "${PUSH_ARGS[@]}" "${TIDBYT_DEVICE_ID}" capybara_clock.webp

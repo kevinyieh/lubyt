@@ -356,7 +356,7 @@ def main(config):
     return render.Root(
         delay = SPRITE_DELAY_MS,
         show_full_animation = True,
-        max_age = 300,
+        max_age = 3600,
         child = render.Stack(
             children = [
                 render.Image(
