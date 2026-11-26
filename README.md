@@ -6,16 +6,16 @@ A custom **64×32 Tidbyt LED matrix app** written in **Pixlet Starlark** featuri
 
 ## Features
 
-- **Left Half (32×32 px):** Clean static clock displaying day of the week (e.g., `WED PM` or `WED`), current time (`HH:MM` in 12h or 24h format), live temperature (`°F` or `°C`), and a color-themed weather label (`SUNNY`, `RAINY`, `SNOWY`, `WINDY`, `STORM`, `CLEAR`, `CLOUDY`, `FOGGY`).
-- **Right Half (32×32 px):** Dynamically selected 15-second seamless loop (`150 frames @ 100 ms = 15.0s`, `loop=0`) of Lulu & Lumei across 6 distinct weather scenes:
-  | State | WMO Codes / Trigger | Scene & Props |
+- **Compact Left HUD (23×32 px + 1px divider):** Clean static clock displaying day of the week (`WED P` or `WED`), current time (`HH:MM` in `tb-8`), live temperature (`°F` or `°C` in `5x8`), and a color-themed weather label (`SUNNY`, `RAINY`, `SNOWY`, `WINDY`, `STORM`, `CLEAR`, `CLOUD`, `FOGGY`).
+- **Expanded Right Stage (40×32 px):** Dynamically selected 15-second seamless personality storyboards (`150 frames @ 100 ms = 15.0s`, `loop=0`) inspired by **Lumei & Lulu (噜噜与噜妹)** — contrasting expressive, adorably "spicy" Lumei with chill, phone-glued, secretly sweet Lulu:
+  | State | WMO Codes / Trigger | 15-Second Storyboard |
   | :--- | :--- | :--- |
-  | `sunny` | `0, 1` (daytime) | Cool sunglasses with lens glint, spinning pixel sun, and a two-bite watermelon cycle |
-  | `rainy` | `51–57, 61–67, 80–82` | Huddled under a blue umbrella with slanted raindrops & puddle ripples |
-  | `snowy` | `71–77, 85–86` | Cozy striped knit scarves, breath puffs, and gently swaying snowflakes |
-  | `windy` | Wind ≥ `25 km/h` (dry) | Leaning into wind gusts with swirling autumn pixel leaves |
-  | `thunderstorm` | `95, 96, 99` | Huddled under a starry purple blanket with two lightning-strike flashes |
-  | `default` | `2, 3, 45, 48` or clear night | Starry twilight sky, drifting wispy cloud, relaxed bobbing, and floating hearts |
+  | `sunny` | `0, 1` (daytime) | Greedy Lulu gobbles the watermelon → spicy Lumei scolds him with steam puffs → Lulu walks off-screen & returns with a fresh slice → instant hearts |
+  | `rainy` | `51–57, 61–67, 80–82` | Phone-glued Lulu drifts off with the blue umbrella → soaked spicy Lumei yanks it back → Lulu sheepishly shares it & hearts float up |
+  | `snowy` | `71–77, 85–86` | Playful Lulu pelts Lumei with a snowball → Lumei packs a giant snowball & chases Lulu toward the screen edge → happy snowy truce |
+  | `windy` | Wind ≥ `25 km/h` (dry) | Mega gust blows Lulu's tangerine & Lulu completely off-screen → Lumei sprints off-screen to rescue him (empty windy stage beat!) → drags dizzy Lulu back |
+  | `thunderstorm` | `95, 96, 99` | Overconfident Lulu sits outside the blanket → huge lightning flash sends him leaping head-first under the starry blanket with Lumei |
+  | `default` | `2, 3, 45, 48` or clear night | Reference-photo phone gag: Lulu glued to his phone → spicy Lumei marches over & snatches it → sweet nuzzle & twin hearts |
 - **Free Open-Meteo API:** Zero API keys required, with 12-minute caching (`cache.get`/`cache.set` + `http.get(..., ttl_seconds=720)`) to avoid rate limits.
 - **Mathematically Seamless 15-Second Loops:**
   - All idle bobbing/blinking oscillators use periods dividing `150` (`30`, `50`, `75` frames).

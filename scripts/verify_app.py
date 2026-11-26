@@ -49,6 +49,8 @@ ALLOWED_PIXLET_MODULES = {
 }
 
 EXPECTED_STATES = ("sunny", "rainy", "snowy", "windy", "thunderstorm", "default")
+EXPECTED_WIDTH = 40
+EXPECTED_HEIGHT = 32
 EXPECTED_FRAMES = 150
 EXPECTED_DELAY_MS = 100
 
@@ -293,7 +295,7 @@ def main() -> None:
     mapper = env["map_wmo_to_weather"]
     assert mapper(0, 5.0, 1) == ("sunny", "SUNNY")
     assert mapper(0, 5.0, 0) == ("default", "CLEAR")
-    assert mapper(3, 10.0, 1) == ("default", "CLOUDY")
+    assert mapper(3, 10.0, 1) == ("default", "CLOUD")
     assert mapper(45, 4.0, 1) == ("default", "FOGGY")
     assert mapper(2, 30.0, 1) == ("windy", "WINDY")
     assert mapper(63, 35.0, 1) == ("rainy", "RAINY")
@@ -329,7 +331,7 @@ def main() -> None:
         img_widget = row_children[2].props["child"]
         gif_bytes = img_widget.props["src"]
         with Image.open(io.BytesIO(gif_bytes)) as gif_im:
-            assert gif_im.size == (32, 32), f"{state} GIF size != 32x32"
+            assert gif_im.size == (EXPECTED_WIDTH, EXPECTED_HEIGHT), f"{state} GIF size != {EXPECTED_WIDTH}x{EXPECTED_HEIGHT}"
             assert gif_im.n_frames == EXPECTED_FRAMES, f"{state} GIF frames={gif_im.n_frames} != {EXPECTED_FRAMES}"
             assert gif_im.info.get("loop") == 0, f"{state} GIF loop != 0"
             gif_durs = []
@@ -344,7 +346,7 @@ def main() -> None:
         webp_path = ASSETS_DIR / f"{state}.webp"
         assert gif_path.read_bytes() == gif_bytes, f"{state}.gif on disk out of sync with .star!"
         with Image.open(webp_path) as webp_im:
-            assert webp_im.size == (32, 32)
+            assert webp_im.size == (EXPECTED_WIDTH, EXPECTED_HEIGHT)
             assert webp_im.n_frames == EXPECTED_FRAMES, f"{state} WebP frames={webp_im.n_frames} != {EXPECTED_FRAMES}"
             assert webp_im.info.get("loop") == 0
             webp_durs = []
@@ -356,7 +358,7 @@ def main() -> None:
             assert sum(webp_durs) == EXPECTED_FRAMES * EXPECTED_DELAY_MS
 
     print(
-        f"[PASS] All 6 embedded GIFs & WebPs verified: 32x32, {EXPECTED_FRAMES} frames @ "
+        f"[PASS] All 6 embedded GIFs & WebPs verified: {EXPECTED_WIDTH}x{EXPECTED_HEIGHT}, {EXPECTED_FRAMES} frames @ "
         f"{EXPECTED_DELAY_MS}ms = {EXPECTED_FRAMES * EXPECTED_DELAY_MS / 1000:.1f}s, loop=0"
     )
 
@@ -394,9 +396,9 @@ def main() -> None:
         div_rgb = tuple(int(div_hex[i:i + 2], 16) for i in (0, 2, 4))
 
         mock_64x32 = Image.new("RGB", (64, 32), bg_rgb)
-        mock_64x32.paste(right_rgb, (32, 0))
+        mock_64x32.paste(right_rgb, (24, 0))
         for y in range(32):
-            mock_64x32.putpixel((31, y), div_rgb)
+            mock_64x32.putpixel((23, y), div_rgb)
 
         upscaled = mock_64x32.resize((card_w, card_h), Image.Resampling.NEAREST)
         draw = ImageDraw.Draw(upscaled)
