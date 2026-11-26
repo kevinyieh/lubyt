@@ -152,14 +152,23 @@ def build_pixlet_runtime(fake_http_responses: Dict[str, Dict[str, Any]], now_24h
         return MockHttpResp(404, {})
 
     class MockTimeObj:
+        def __init__(self, extra_sec: int = 0):
+            self.extra_sec = extra_sec
+
+        def __add__(self, dur_sec: int):
+            return MockTimeObj(self.extra_sec + int(dur_sec))
+
         def in_location(self, tz: str):
             assert isinstance(tz, str) and len(tz) > 0
             return self
 
         def format(self, layout: str) -> str:
             h, m = now_24h.split(":")
-            h12 = str(int(h) % 12 or 12)
-            return {"15:04": now_24h, "3:04": f"{h12}:{m}"}.get(layout, layout)
+            total_min = (int(h) * 60 + int(m) + (self.extra_sec // 60)) % (24 * 60)
+            hh, mm = divmod(total_min, 60)
+            hhmm = f"{hh:02d}:{mm:02d}"
+            h12 = str(hh % 12 or 12)
+            return {"15:04": hhmm, "3:04": f"{h12}:{mm:02d}"}.get(layout, layout)
 
     modules = {
         "cache.star": {"cache": MockModule("cache", {"get": cache_get, "set": cache_set})},
@@ -193,7 +202,15 @@ def build_pixlet_runtime(fake_http_responses: Dict[str, Dict[str, Any]], now_24h
                 },
             )
         },
-        "time.star": {"time": MockModule("time", {"now": lambda: MockTimeObj()})},
+        "time.star": {
+            "time": MockModule(
+                "time",
+                {
+                    "now": lambda: MockTimeObj(),
+                    "parse_duration": lambda s: int(str(s).rstrip("s")),
+                },
+            )
+        },
     }
 
     env: Dict[str, Any] = {"_cache_store": cache_store, "_http_calls": http_calls}

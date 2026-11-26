@@ -36,6 +36,9 @@ concurrency:
 
 env:
   PIXLET_VERSION: v0.34.0
+  # Pre-render the upcoming minute N seconds before :00 so Tidbyt flips right on the minute!
+  # Override anytime via repository variable CAPYBARA_PRE_RENDER_LEAD_SEC (e.g. 12..22, or 0 to disable).
+  DEFAULT_PRE_RENDER_LEAD_SEC: "15"
 
 jobs:
   render-and-push:
@@ -83,6 +86,8 @@ jobs:
           TIMEZONE: ${{ vars.CAPYBARA_TIMEZONE }}
           USE_24H: ${{ vars.CAPYBARA_USE_24H }}
           TEMP_UNIT: ${{ vars.CAPYBARA_TEMP_UNIT }}
+          LEAD_SEC: ${{ vars.CAPYBARA_PRE_RENDER_LEAD_SEC || env.DEFAULT_PRE_RENDER_LEAD_SEC }}
+          FOREGROUND: ${{ github.event.inputs.foreground || 'false' }}
           DEBUG_WEATHER: ${{ github.event.inputs.debug_weather || 'auto' }}
           DEBUG_TIME_OF_DAY: ${{ github.event.inputs.debug_time_of_day || 'auto' }}
           DEBUG_TEMP: ${{ github.event.inputs.debug_temp || 'auto' }}
@@ -97,6 +102,25 @@ jobs:
           [ -n "$DEBUG_WEATHER" ]     && ARGS+=("debug_weather=${DEBUG_WEATHER}")
           [ -n "$DEBUG_TIME_OF_DAY" ] && ARGS+=("debug_time_of_day=${DEBUG_TIME_OF_DAY}")
           [ -n "$DEBUG_TEMP" ]        && ARGS+=("debug_temp=${DEBUG_TEMP}")
+
+          IS_DEBUG="false"
+          if [ "$DEBUG_WEATHER" != "auto" ] || [ "$DEBUG_TIME_OF_DAY" != "auto" ] || [ "$DEBUG_TEMP" != "auto" ]; then
+            IS_DEBUG="true"
+          fi
+
+          # On automated 1-minute triggers, wait until (60 - LEAD_SEC - 3)s and pre-render
+          # the upcoming minute so the Tidbyt picks it up right at :00!
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "$FOREGROUND" != "true" ] && [ "$IS_DEBUG" != "true" ] && [ "${LEAD_SEC:-0}" -gt 0 ]; then
+            TARGET_SEC=$((60 - LEAD_SEC - 3))
+            SEC=$((10#$(date +%S)))
+            if [ "$SEC" -lt "$TARGET_SEC" ]; then
+              WAIT_SEC=$((TARGET_SEC - SEC))
+              echo "Pre-render sync: waiting ${WAIT_SEC}s until :${TARGET_SEC} (push ~${LEAD_SEC}s before next minute)..."
+              sleep "$WAIT_SEC"
+            fi
+            CLOCK_OFFSET=$((LEAD_SEC + 5))
+            ARGS+=("clock_offset_sec=${CLOCK_OFFSET}")
+          fi
 
           # Retry up to 3 times in case Open-Meteo has a brief transient timeout
           for attempt in 1 2 3; do

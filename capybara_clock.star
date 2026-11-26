@@ -331,8 +331,13 @@ def main(config):
     if not tz_override and weather != None and weather.get("timezone"):
         timezone = weather.get("timezone")
 
-    # Current local time
-    now = time.now().in_location(timezone)
+    # Current local time (optional clock_offset_sec lets automated CI pre-render
+    # the upcoming minute ~15s early so Tidbyt flips right at :00!)
+    clock_offset_sec = int(config.str("clock_offset_sec", "0") or "0")
+    now_utc = time.now()
+    if clock_offset_sec != 0:
+        now_utc = now_utc + time.parse_duration("%ds" % clock_offset_sec)
+    now = now_utc.in_location(timezone)
     now_24h = now.format("15:04")
     time_str = now_24h if use_24h else now.format("3:04")
 
