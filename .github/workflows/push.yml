@@ -1,0 +1,80 @@
+name: Render & Push Capybara Clock to Tidbyt
+
+on:
+  schedule:
+    # Run every 5 minutes to keep the clock and local weather fresh
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      debug_weather:
+        description: "Optional weather state override (auto, sunny, rainy, snowy, windy, thunderstorm, default)"
+        required: false
+        default: "auto"
+
+# Prevent overlapping pushes if a previous run is still finishing
+concurrency:
+  group: tidbyt-capybara-clock-push
+  cancel-in-progress: true
+
+jobs:
+  render-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install libwebp runtime dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebp-dev
+
+      - name: Download and install Pixlet
+        run: |
+          PIXLET_VERSION=$(curl -fsSL https://api.github.com/repos/tidbyt/pixlet/releases/latest \
+            | grep '"tag_name":' \
+            | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "Installing Pixlet ${PIXLET_VERSION}..."
+          curl -fsSLO "https://github.com/tidbyt/pixlet/releases/download/${PIXLET_VERSION}/pixlet_${PIXLET_VERSION#v}_linux_amd64.tar.gz"
+          tar -xzf "pixlet_${PIXLET_VERSION#v}_linux_amd64.tar.gz"
+          chmod +x pixlet
+          sudo mv pixlet /usr/local/bin/pixlet
+          pixlet version
+
+      - name: Render capybara_clock.star to WebP
+        env:
+          LATITUDE: ${{ vars.CAPYBARA_LATITUDE }}
+          LONGITUDE: ${{ vars.CAPYBARA_LONGITUDE }}
+          ZIP_CODE: ${{ vars.CAPYBARA_ZIP_CODE }}
+          TIMEZONE: ${{ vars.CAPYBARA_TIMEZONE }}
+          USE_24H: ${{ vars.CAPYBARA_USE_24H }}
+          TEMP_UNIT: ${{ vars.CAPYBARA_TEMP_UNIT }}
+          DEBUG_WEATHER: ${{ github.event.inputs.debug_weather || 'auto' }}
+        run: |
+          ARGS=()
+          [ -n "$LATITUDE" ]      && ARGS+=("latitude=${LATITUDE}")
+          [ -n "$LONGITUDE" ]     && ARGS+=("longitude=${LONGITUDE}")
+          [ -n "$ZIP_CODE" ]      && ARGS+=("zip_code=${ZIP_CODE}")
+          [ -n "$TIMEZONE" ]      && ARGS+=("timezone=${TIMEZONE}")
+          [ -n "$USE_24H" ]       && ARGS+=("use_24h=${USE_24H}")
+          [ -n "$TEMP_UNIT" ]     && ARGS+=("temp_unit=${TEMP_UNIT}")
+          [ -n "$DEBUG_WEATHER" ] && ARGS+=("debug_weather=${DEBUG_WEATHER}")
+
+          pixlet render capybara_clock.star "${ARGS[@]}" -o capybara_clock.webp
+          ls -lh capybara_clock.webp
+
+      - name: Push WebP to Tidbyt device
+        env:
+          TIDBYT_DEVICE_ID: ${{ secrets.TIDBYT_DEVICE_ID }}
+          TIDBYT_API_KEY: ${{ secrets.TIDBYT_API_KEY }}
+        run: |
+          if [ -z "$TIDBYT_DEVICE_ID" ] || [ -z "$TIDBYT_API_KEY" ]; then
+            echo "::error::Missing TIDBYT_DEVICE_ID or TIDBYT_API_KEY repository secrets."
+            exit 1
+          fi
+
+          pixlet push \
+            --api-token "${TIDBYT_API_KEY}" \
+            --installation-id "capybara-clock" \
+            --background \
+            "${TIDBYT_DEVICE_ID}" \
+            capybara_clock.webp
