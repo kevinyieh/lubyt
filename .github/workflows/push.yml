@@ -80,7 +80,7 @@ jobs:
 
           pixlet push \
             --api-token "${TIDBYT_API_KEY}" \
-            --installation-id "capybara-clock" \
+            --installation-id "capybaraclock" \
             --background \
             "${TIDBYT_DEVICE_ID}" \
             capybara_clock.webp

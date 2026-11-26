@@ -107,7 +107,7 @@ pixlet render capybara_clock.star zip_code=11215 debug_weather=snowy -o preview_
 ```bash
 pixlet push \
   --api-token "$TIDBYT_API_KEY" \
-  --installation-id "capybara-clock" \
+  --installation-id "capybaraclock" \
   "$TIDBYT_DEVICE_ID" \
   preview.webp
 ```
