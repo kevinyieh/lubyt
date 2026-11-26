@@ -65,7 +65,18 @@ jobs:
           [ -n "$DEBUG_WEATHER" ]     && ARGS+=("debug_weather=${DEBUG_WEATHER}")
           [ -n "$DEBUG_TIME_OF_DAY" ] && ARGS+=("debug_time_of_day=${DEBUG_TIME_OF_DAY}")
 
-          pixlet render capybara_clock.star "${ARGS[@]}" -o capybara_clock.webp
+          # Retry up to 3 times in case Open-Meteo has a brief transient timeout
+          for attempt in 1 2 3; do
+            if pixlet render capybara_clock.star "${ARGS[@]}" -o capybara_clock.webp; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::pixlet render failed after 3 attempts."
+              exit 1
+            fi
+            echo "Render attempt ${attempt} failed (transient API timeout); retrying in 4s..."
+            sleep 4
+          done
           ls -lh capybara_clock.webp
 
       - name: Push WebP to Tidbyt device

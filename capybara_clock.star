@@ -242,7 +242,6 @@ def fetch_weather(lat, lon, timezone, temp_unit):
     if cached_raw != None:
         return json.decode(cached_raw)
 
-    tz_encoded = timezone.replace("/", "%2F")
     url = (
         "https://api.open-meteo.com/v1/forecast"
         + "?latitude=" + lat
@@ -250,7 +249,7 @@ def fetch_weather(lat, lon, timezone, temp_unit):
         + "&current=temperature_2m,weather_code,wind_speed_10m,is_day"
         + "&daily=sunrise,sunset"
         + "&forecast_days=1"
-        + "&timezone=" + tz_encoded
+        + "&timezone=auto"
         + "&temperature_unit=" + unit_param
     )
 
