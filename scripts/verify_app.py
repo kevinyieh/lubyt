@@ -53,7 +53,13 @@ WEATHER_TYPES = (
     "thunderstorm_hail",
     "windy",
 )
-EXPECTED_STATES = tuple(f"{w}_{tod}" for w in WEATHER_TYPES for tod in ("day", "night"))
+TEMP_AWARE_WEATHERS = ("clear", "partly_cloudy")
+EXPECTED_STATES = tuple(
+    f"{w}_{tod}_{tier}" if w in TEMP_AWARE_WEATHERS else f"{w}_{tod}"
+    for w in WEATHER_TYPES
+    for tod in ("day", "night")
+    for tier in (("warm", "cold") if w in TEMP_AWARE_WEATHERS else ("",))
+)
 EXPECTED_WIDTH = 64
 EXPECTED_HEIGHT = 32
 EXPECTED_FRAMES = 150
@@ -246,9 +252,9 @@ def main() -> None:
 
     schema_obj = env["get_schema"]()
     field_ids = [f.props["id"] for f in schema_obj.props["fields"]]
-    for req in ("location", "latitude", "longitude", "zip_code", "timezone", "use_24h", "temp_unit", "debug_weather", "debug_time_of_day"):
+    for req in ("location", "latitude", "longitude", "zip_code", "timezone", "use_24h", "temp_unit", "debug_weather", "debug_time_of_day", "debug_temp"):
         assert req in field_ids, f"Missing schema field: {req}"
-    print(f"[PASS] get_schema() verified ({len(field_ids)} fields including debug_time_of_day)")
+    print(f"[PASS] get_schema() verified ({len(field_ids)} fields including debug_time_of_day & debug_temp)")
 
     # Verify all 28 official Open-Meteo WMO codes
     mapper = env["map_wmo_to_weather"]
@@ -290,44 +296,49 @@ def main() -> None:
     assert root1.props["delay"] == EXPECTED_DELAY_MS and root2.props["show_full_animation"] is True
 
     stack_children = root1.props["child"].props["children"]
-    assert stack_children[0].props["src"] == (ASSETS_DIR / "partly_cloudy_night.gif").read_bytes()
+    # 45.4°F < 55°F and 19:09 > 16:30 sunset -> must select partly_cloudy_night_cold!
+    assert stack_children[0].props["src"] == (ASSETS_DIR / "partly_cloudy_night_cold.gif").read_bytes()
     hud_texts = stack_children[1].props["child"].props["child"].props["children"]
     assert [t.props["content"] for t in hud_texts] == ["7:09", "45°"]
-    print("[PASS] Caching, auto sunset night selection, & minimal upper-left HUD verified")
+    # Check warm vs cold threshold in both F and C
+    is_cold_fn = env["is_cold_temp"]
+    assert is_cold_fn({"temp": 42.0}, "F") is True
+    assert is_cold_fn({"temp": 68.0}, "F") is False
+    assert is_cold_fn({"temp": 8.0}, "C") is True   # 46.4°F
+    assert is_cold_fn({"temp": 20.0}, "C") is False # 68.0°F
+    print("[PASS] Caching, auto sunset + cold/warm temp selection (F & C), & minimal HUD verified")
 
-    # Verify all 24 Day & Night GIFs + WebPs
+    # Verify all 28 GIFs + WebPs
     sprites_b64: Dict[str, str] = env["SPRITES_B64"]
     assert tuple(sprites_b64.keys()) == EXPECTED_STATES
 
-    for wtype in WEATHER_TYPES:
-        for tod in ("day", "night"):
-            state = f"{wtype}_{tod}"
-            root = env["main"](MockConfig({"debug_weather": wtype, "debug_time_of_day": tod}))
-            gif_bytes = root.props["child"].props["children"][0].props["src"]
-            with Image.open(io.BytesIO(gif_bytes)) as gif_im:
-                assert gif_im.size == (EXPECTED_WIDTH, EXPECTED_HEIGHT)
-                assert gif_im.n_frames == EXPECTED_FRAMES
-                assert gif_im.info.get("loop") == 0
-                durs = []
-                for i in range(gif_im.n_frames):
-                    gif_im.seek(i)
-                    durs.append(gif_im.info.get("duration", 0))
-                assert all(d == EXPECTED_DELAY_MS for d in durs)
+    for state in EXPECTED_STATES:
+        root = env["main"](MockConfig({"debug_weather": state}))
+        gif_bytes = root.props["child"].props["children"][0].props["src"]
+        with Image.open(io.BytesIO(gif_bytes)) as gif_im:
+            assert gif_im.size == (EXPECTED_WIDTH, EXPECTED_HEIGHT)
+            assert gif_im.n_frames == EXPECTED_FRAMES
+            assert gif_im.info.get("loop") == 0
+            durs = []
+            for i in range(gif_im.n_frames):
+                gif_im.seek(i)
+                durs.append(gif_im.info.get("duration", 0))
+            assert all(d == EXPECTED_DELAY_MS for d in durs)
 
-            assert (ASSETS_DIR / f"{state}.gif").read_bytes() == gif_bytes
-            with Image.open(ASSETS_DIR / f"{state}.webp") as webp_im:
-                assert webp_im.size == (EXPECTED_WIDTH, EXPECTED_HEIGHT)
-                assert webp_im.n_frames == EXPECTED_FRAMES
-                assert webp_im.info.get("loop") == 0
-                wdurs = []
-                for i in range(webp_im.n_frames):
-                    webp_im.seek(i)
-                    webp_im.load()
-                    wdurs.append(webp_im.info.get("duration", 0))
-                assert all(d == EXPECTED_DELAY_MS for d in wdurs)
+        assert (ASSETS_DIR / f"{state}.gif").read_bytes() == gif_bytes
+        with Image.open(ASSETS_DIR / f"{state}.webp") as webp_im:
+            assert webp_im.size == (EXPECTED_WIDTH, EXPECTED_HEIGHT)
+            assert webp_im.n_frames == EXPECTED_FRAMES
+            assert webp_im.info.get("loop") == 0
+            wdurs = []
+            for i in range(webp_im.n_frames):
+                webp_im.seek(i)
+                webp_im.load()
+                wdurs.append(webp_im.info.get("duration", 0))
+            assert all(d == EXPECTED_DELAY_MS for d in wdurs)
 
     print(
-        f"[PASS] All {len(EXPECTED_STATES)} Day & Night GIFs & WebPs verified: "
+        f"[PASS] All {len(EXPECTED_STATES)} Day/Night & Warm/Cold GIFs & WebPs verified: "
         f"{EXPECTED_WIDTH}x{EXPECTED_HEIGHT}, {EXPECTED_FRAMES} frames @ {EXPECTED_DELAY_MS}ms = 15.0s, loop=0"
     )
 
