@@ -32,10 +32,13 @@ import base64
 import io
 import math
 import re
+import sys
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 from PIL import Image, ImageDraw
+
+from holiday_sprites import HOLIDAY_STATES, build_holiday_renderers
 
 # ---------------------------------------------------------------------------
 # Core Animation Timing & Full-Screen Canvas Constants
@@ -74,6 +77,7 @@ def _build_state_list() -> Tuple[str, ...]:
                 out.append(f"{w}_{tod}_cold")
             else:
                 out.append(f"{w}_{tod}")
+    out.extend(HOLIDAY_STATES)
     return tuple(out)
 
 
@@ -3504,6 +3508,7 @@ SCENE_RENDERERS: Dict[str, Callable[[int], Image.Image]] = {
     "windy_day": lambda f: render_windy(f, is_night=False),
     "windy_night": lambda f: render_windy(f, is_night=True),
 }
+SCENE_RENDERERS.update(build_holiday_renderers(sys.modules[__name__]))
 
 
 # ---------------------------------------------------------------------------
@@ -3661,6 +3666,43 @@ def build_contact_sheet(state_frames: Dict[str, List[Image.Image]], scale: int =
     return out_path
 
 
+def build_holiday_review_sheet(state_frames: Dict[str, List[Image.Image]], scale: int = 4) -> Path:
+    """High-res 4-beat storyboard sheet across all 11 holiday & birthday states."""
+    PREVIEWS_DIR.mkdir(parents=True, exist_ok=True)
+    sample_indices = [0, 44, 76, 112]
+    pad = 8
+    label_h = 16
+    cell_w = WIDTH * scale
+    cell_h = HEIGHT * scale
+    cols = len(sample_indices)
+    rows = len(HOLIDAY_STATES)
+    sheet_w = pad + cols * (cell_w + pad)
+    sheet_h = pad + rows * (cell_h + label_h + pad)
+
+    sheet = Image.new("RGB", (sheet_w, sheet_h), (12, 14, 22))
+    draw = ImageDraw.Draw(sheet)
+
+    for r_idx, st in enumerate(HOLIDAY_STATES):
+        y_top = pad + r_idx * (cell_h + label_h + pad)
+        for c_idx, f_idx in enumerate(sample_indices):
+            x_left = pad + c_idx * (cell_w + pad)
+            draw.text((x_left, y_top), f"{st} (f={f_idx})", fill=(232, 238, 248))
+            upscaled = state_frames[st][f_idx].convert("RGB").resize(
+                (cell_w, cell_h), Image.Resampling.NEAREST
+            )
+            sheet.paste(upscaled, (x_left, y_top + label_h))
+            # Subtle 20x12 upper-left HUD safe-zone guide box
+            draw.rectangle(
+                [x_left, y_top + label_h, x_left + 20 * scale - 1, y_top + label_h + 12 * scale - 1],
+                outline=(120, 140, 180),
+                width=1,
+            )
+
+    out_path = PREVIEWS_DIR / "holidays_and_birthdays_review.png"
+    sheet.save(out_path)
+    return out_path
+
+
 def inject_sprites_into_star(b64_map: Dict[str, str], star_path: Path) -> None:
     if not star_path.exists():
         print(f"Note: {star_path} does not exist yet; skipping Starlark injection.")
@@ -3742,6 +3784,8 @@ def main() -> None:
     if args.preview:
         sheet = build_contact_sheet(all_frames)
         print(f"Saved preview contact sheet -> {sheet}")
+        hsheet = build_holiday_review_sheet(all_frames)
+        print(f"Saved holiday & birthday review sheet -> {hsheet}")
 
     if not args.no_inject:
         inject_sprites_into_star(b64_map, STAR_FILE)

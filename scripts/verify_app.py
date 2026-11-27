@@ -54,12 +54,25 @@ WEATHER_TYPES = (
     "windy",
 )
 TEMP_AWARE_WEATHERS = ("clear", "partly_cloudy")
+HOLIDAY_STATES = (
+    "holiday_new_year",
+    "holiday_lunar_new_year",
+    "holiday_valentines",
+    "birthday_lulu",
+    "holiday_st_patricks",
+    "holiday_easter",
+    "holiday_independence",
+    "birthday_lumei",
+    "holiday_halloween",
+    "holiday_thanksgiving",
+    "holiday_christmas",
+)
 EXPECTED_STATES = tuple(
     f"{w}_{tod}_{tier}" if w in TEMP_AWARE_WEATHERS else f"{w}_{tod}"
     for w in WEATHER_TYPES
     for tod in ("day", "night")
     for tier in (("warm", "cold") if w in TEMP_AWARE_WEATHERS else ("",))
-)
+) + HOLIDAY_STATES
 EXPECTED_WIDTH = 64
 EXPECTED_HEIGHT = 32
 EXPECTED_FRAMES = 150
@@ -152,17 +165,21 @@ def build_pixlet_runtime(fake_http_responses: Dict[str, Dict[str, Any]], now_24h
         return MockHttpResp(404, {})
 
     class MockTimeObj:
-        def __init__(self, extra_sec: int = 0):
+        def __init__(self, extra_sec: int = 0, ymd=(2026, 6, 10), wd="Wed"):
             self.extra_sec = extra_sec
+            self.year, self.month, self.day = ymd
+            self._wd = wd
 
         def __add__(self, dur_sec: int):
-            return MockTimeObj(self.extra_sec + int(dur_sec))
+            return MockTimeObj(self.extra_sec + int(dur_sec), (self.year, self.month, self.day), self._wd)
 
         def in_location(self, tz: str):
             assert isinstance(tz, str) and len(tz) > 0
             return self
 
         def format(self, layout: str) -> str:
+            if layout == "Mon":
+                return self._wd
             h, m = now_24h.split(":")
             total_min = (int(h) * 60 + int(m) + (self.extra_sec // 60)) % (24 * 60)
             hh, mm = divmod(total_min, 60)
@@ -269,9 +286,37 @@ def main() -> None:
 
     schema_obj = env["get_schema"]()
     field_ids = [f.props["id"] for f in schema_obj.props["fields"]]
-    for req in ("location", "latitude", "longitude", "zip_code", "timezone", "use_24h", "temp_unit", "debug_weather", "debug_time_of_day", "debug_temp"):
+    for req in ("location", "latitude", "longitude", "zip_code", "timezone", "use_24h", "temp_unit", "debug_weather", "debug_time_of_day", "debug_temp", "debug_holiday"):
         assert req in field_ids, f"Missing schema field: {req}"
-    print(f"[PASS] get_schema() verified ({len(field_ids)} fields including debug_time_of_day & debug_temp)")
+    print(f"[PASS] get_schema() verified ({len(field_ids)} fields including debug_time_of_day, debug_temp, & debug_holiday)")
+
+    # Verify all 11 special holiday & birthday detections (fixed + floating)
+    detect_fn = env["detect_special_day"]
+    special_cases = [
+        ((2026, 1, 1, "Thu", "10:00"), "holiday_new_year"),
+        ((2026, 12, 31, "Thu", "19:30"), "holiday_new_year"),
+        ((2026, 12, 31, "Thu", "14:00"), None),
+        ((2026, 2, 17, "Tue", "12:00"), "holiday_lunar_new_year"),
+        ((2027, 2, 6, "Sat", "12:00"), "holiday_lunar_new_year"),
+        ((2026, 2, 14, "Sat", "12:00"), "holiday_valentines"),
+        ((2026, 2, 20, "Fri", "09:00"), "birthday_lulu"),
+        ((2026, 3, 17, "Tue", "12:00"), "holiday_st_patricks"),
+        ((2026, 4, 5, "Sun", "12:00"), "holiday_easter"),
+        ((2027, 3, 28, "Sun", "12:00"), "holiday_easter"),
+        ((2026, 7, 4, "Sat", "21:00"), "holiday_independence"),
+        ((2026, 10, 20, "Tue", "09:00"), "birthday_lumei"),
+        ((2026, 10, 31, "Sat", "20:00"), "holiday_halloween"),
+        ((2026, 11, 26, "Thu", "15:00"), "holiday_thanksgiving"),
+        ((2026, 11, 19, "Thu", "15:00"), None),
+        ((2026, 12, 24, "Thu", "18:00"), "holiday_christmas"),
+        ((2026, 12, 24, "Thu", "12:00"), None),
+        ((2026, 12, 25, "Fri", "08:00"), "holiday_christmas"),
+        ((2026, 6, 10, "Wed", "12:00"), None),
+    ]
+    for args, expected in special_cases:
+        got = detect_fn(*args)
+        assert got == expected, f"detect_special_day{args}: expected {expected}, got {got}"
+    print("[PASS] All 11 major holidays + Lulu (Feb 20) & Lumei (Oct 20) birthdays verified")
 
     # Verify all 28 official Open-Meteo WMO codes
     mapper = env["map_wmo_to_weather"]

@@ -24,6 +24,10 @@ on:
         description: "Optional temperature tier override (auto, warm, cold)"
         required: false
         default: "auto"
+      debug_holiday:
+        description: "Optional holiday/birthday override (auto, none, holiday_new_year, holiday_lunar_new_year, holiday_valentines, birthday_lulu, holiday_st_patricks, holiday_easter, holiday_independence, birthday_lumei, holiday_halloween, holiday_thanksgiving, holiday_christmas)"
+        required: false
+        default: "auto"
       foreground:
         description: "Set true to jump immediately to Capybara Clock on Tidbyt (default false updates silently in rotation)"
         required: false
@@ -205,6 +209,7 @@ jobs:
           DEBUG_WEATHER: ${{ github.event.inputs.debug_weather || 'auto' }}
           DEBUG_TIME_OF_DAY: ${{ github.event.inputs.debug_time_of_day || 'auto' }}
           DEBUG_TEMP: ${{ github.event.inputs.debug_temp || 'auto' }}
+          DEBUG_HOLIDAY: ${{ github.event.inputs.debug_holiday || 'auto' }}
         run: |
           ARGS=()
           [ -n "$LATITUDE" ]          && ARGS+=("latitude=${LATITUDE}")
@@ -216,12 +221,13 @@ jobs:
           [ -n "$DEBUG_WEATHER" ]     && ARGS+=("debug_weather=${DEBUG_WEATHER}")
           [ -n "$DEBUG_TIME_OF_DAY" ] && ARGS+=("debug_time_of_day=${DEBUG_TIME_OF_DAY}")
           [ -n "$DEBUG_TEMP" ]        && ARGS+=("debug_temp=${DEBUG_TEMP}")
+          [ -n "$DEBUG_HOLIDAY" ]     && ARGS+=("debug_holiday=${DEBUG_HOLIDAY}")
           if [ -s /tmp/weather.json ]; then
             ARGS+=("weather_json=$(cat /tmp/weather.json)")
           fi
 
           IS_DEBUG="false"
-          if [ "$DEBUG_WEATHER" != "auto" ] || [ "$DEBUG_TIME_OF_DAY" != "auto" ] || [ "$DEBUG_TEMP" != "auto" ]; then
+          if [ "$DEBUG_WEATHER" != "auto" ] || [ "$DEBUG_TIME_OF_DAY" != "auto" ] || [ "$DEBUG_TEMP" != "auto" ] || [ "$DEBUG_HOLIDAY" != "auto" ]; then
             IS_DEBUG="true"
           fi
 
@@ -250,6 +256,7 @@ jobs:
           DEBUG_WEATHER: ${{ github.event.inputs.debug_weather || 'auto' }}
           DEBUG_TIME_OF_DAY: ${{ github.event.inputs.debug_time_of_day || 'auto' }}
           DEBUG_TEMP: ${{ github.event.inputs.debug_temp || 'auto' }}
+          DEBUG_HOLIDAY: ${{ github.event.inputs.debug_holiday || 'auto' }}
         run: |
           if [ -z "$TIDBYT_DEVICE_ID" ] || [ -z "$TIDBYT_API_KEY" ]; then
             echo "::error::Missing TIDBYT_DEVICE_ID or TIDBYT_API_KEY repository secrets."
@@ -263,7 +270,7 @@ jobs:
             --installation-id "capybaraclock"
           )
           IS_DEBUG="false"
-          if [ "$DEBUG_WEATHER" != "auto" ] || [ "$DEBUG_TIME_OF_DAY" != "auto" ] || [ "$DEBUG_TEMP" != "auto" ]; then
+          if [ "$DEBUG_WEATHER" != "auto" ] || [ "$DEBUG_TIME_OF_DAY" != "auto" ] || [ "$DEBUG_TEMP" != "auto" ] || [ "$DEBUG_HOLIDAY" != "auto" ]; then
             IS_DEBUG="true"
           fi
           if [ "${{ github.event_name }}" != "push" ] && [ "$FOREGROUND" != "true" ] && [ "$IS_DEBUG" != "true" ]; then
