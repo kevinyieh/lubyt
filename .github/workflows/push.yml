@@ -78,6 +78,120 @@ jobs:
           fi
           ~/.local/bin/pixlet version
 
+      - name: Compute weather cache key (15-min buckets)
+        id: wx-key
+        env:
+          LATITUDE: ${{ vars.CAPYBARA_LATITUDE }}
+          LONGITUDE: ${{ vars.CAPYBARA_LONGITUDE }}
+          ZIP_CODE: ${{ vars.CAPYBARA_ZIP_CODE }}
+          TEMP_UNIT: ${{ vars.CAPYBARA_TEMP_UNIT }}
+        run: |
+          LOC_KEY="${LATITUDE:-40.6782}_${LONGITUDE:--73.9442}_${ZIP_CODE:-nozip}_${TEMP_UNIT:-F}"
+          LOC_HASH="$(printf '%s' "$LOC_KEY" | sha256sum | cut -c1-12)"
+          BUCKET="$(date -u +%Y%m%d%H)_$((10#$(date -u +%M) / 15))"
+          echo "hash=${LOC_HASH}" >> "$GITHUB_OUTPUT"
+          echo "bucket=${BUCKET}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache weather data (15-min TTL + stale fallback)
+        id: cache-weather
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/capybara/weather.json
+          key: weather-v1-${{ steps.wx-key.outputs.hash }}-${{ steps.wx-key.outputs.bucket }}
+          restore-keys: |
+            weather-v1-${{ steps.wx-key.outputs.hash }}-
+
+      - name: Fetch weather (15-min cache, IPv4 + stale fallback)
+        env:
+          CACHE_HIT: ${{ steps.cache-weather.outputs.cache-hit }}
+          LATITUDE: ${{ vars.CAPYBARA_LATITUDE }}
+          LONGITUDE: ${{ vars.CAPYBARA_LONGITUDE }}
+          ZIP_CODE: ${{ vars.CAPYBARA_ZIP_CODE }}
+          TEMP_UNIT: ${{ vars.CAPYBARA_TEMP_UNIT }}
+        run: |
+          CACHE_FILE="${HOME}/.cache/capybara/weather.json"
+          mkdir -p "${HOME}/.cache/capybara"
+
+          if [ "$CACHE_HIT" = "true" ] && [ -s "$CACHE_FILE" ]; then
+            cp "$CACHE_FILE" /tmp/weather.json
+            echo "Weather cache hit (15-min bucket): $(cat /tmp/weather.json)"
+            exit 0
+          fi
+
+          # Preserve any restored previous bucket as a fallback if Open-Meteo is unreachable
+          if [ -s "$CACHE_FILE" ]; then
+            cp "$CACHE_FILE" /tmp/weather_fallback.json
+          fi
+
+          LAT="${LATITUDE:-}"
+          LON="${LONGITUDE:-}"
+          if { [ -z "$LAT" ] || [ -z "$LON" ]; } && [ -n "$ZIP_CODE" ]; then
+            ZIP_Q="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1].strip()))' "$ZIP_CODE")"
+            if GEO_RAW="$(curl -4 -fsS --connect-timeout 6 --max-time 12 "https://geocoding-api.open-meteo.com/v1/search?name=${ZIP_Q}&count=1&language=en&format=json" 2>/dev/null)"; then
+              read -r LAT LON < <(python3 -c 'import json, sys; r=(json.loads(sys.argv[1]).get("results") or [{}])[0]; print(r.get("latitude",""), r.get("longitude",""))' "$GEO_RAW" 2>/dev/null || true)
+            fi
+          fi
+          LAT="${LAT:-40.6782}"
+          LON="${LON:--73.9442}"
+          UNIT_PARAM="fahrenheit"
+          if [ "${TEMP_UNIT:-F}" = "C" ]; then
+            UNIT_PARAM="celsius"
+          fi
+
+          URL="https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,weather_code,wind_speed_10m,is_day&daily=sunrise,sunset&forecast_days=1&timezone=auto&temperature_unit=${UNIT_PARAM}"
+
+          FETCHED=""
+          for attempt in 1 2 3; do
+            # Force IPv4 on attempts 1-2 (avoids Azure IPv6 stalls to Open-Meteo); allow dual-stack on attempt 3
+            IP_FLAG="-4"
+            [ "$attempt" -eq 3 ] && IP_FLAG=""
+            if RAW="$(curl $IP_FLAG -fsS --connect-timeout 6 --max-time 12 "$URL" 2>&1)"; then
+              if PARSED="$(python3 - "$RAW" <<'PYEOF'
+          import json, sys
+          data = json.loads(sys.argv[1])
+          cur = data.get("current") or {}
+          if "temperature_2m" not in cur:
+              sys.exit(1)
+          daily = data.get("daily") or {}
+          sr = (daily.get("sunrise") or [""])[0]
+          ss = (daily.get("sunset") or [""])[0]
+          extract = lambda s: s.split("T")[1][:5] if ("T" in s and len(s.split("T")[1]) >= 5) else ""
+          out = {
+              "temp": cur.get("temperature_2m", 0.0),
+              "code": cur.get("weather_code", 0),
+              "wind": cur.get("wind_speed_10m", 0.0),
+              "is_day": cur.get("is_day", 1),
+              "sunrise": extract(sr),
+              "sunset": extract(ss),
+              "timezone": str(data.get("timezone", "")),
+          }
+          print(json.dumps(out, separators=(",", ":")))
+          PYEOF
+              )"; then
+                FETCHED="$PARSED"
+                break
+              fi
+            fi
+            echo "Open-Meteo fetch attempt ${attempt} failed: ${RAW:-parse error}"
+            [ "$attempt" -lt 3 ] && sleep 2
+          done
+
+          if [ -n "$FETCHED" ]; then
+            printf '%s' "$FETCHED" > "$CACHE_FILE"
+            printf '%s' "$FETCHED" > /tmp/weather.json
+            echo "Fetched fresh weather: ${FETCHED}"
+          else
+            # Do not save a failed bucket to cache so the next minute retries Open-Meteo cleanly
+            rm -f "$CACHE_FILE"
+            if [ -s /tmp/weather_fallback.json ]; then
+              cp /tmp/weather_fallback.json /tmp/weather.json
+              echo "::warning::Open-Meteo timed out after 3 attempts; reusing last cached weather so clock stays on time."
+            else
+              printf 'none' > /tmp/weather.json
+              echo "::warning::Open-Meteo timed out and no cached weather yet; rendering clock with fallback state."
+            fi
+          fi
+
       - name: Render capybara_clock.star to WebP
         env:
           LATITUDE: ${{ vars.CAPYBARA_LATITUDE }}
@@ -102,6 +216,9 @@ jobs:
           [ -n "$DEBUG_WEATHER" ]     && ARGS+=("debug_weather=${DEBUG_WEATHER}")
           [ -n "$DEBUG_TIME_OF_DAY" ] && ARGS+=("debug_time_of_day=${DEBUG_TIME_OF_DAY}")
           [ -n "$DEBUG_TEMP" ]        && ARGS+=("debug_temp=${DEBUG_TEMP}")
+          if [ -s /tmp/weather.json ]; then
+            ARGS+=("weather_json=$(cat /tmp/weather.json)")
+          fi
 
           IS_DEBUG="false"
           if [ "$DEBUG_WEATHER" != "auto" ] || [ "$DEBUG_TIME_OF_DAY" != "auto" ] || [ "$DEBUG_TEMP" != "auto" ]; then
@@ -122,18 +239,7 @@ jobs:
             ARGS+=("clock_offset_sec=${CLOCK_OFFSET}")
           fi
 
-          # Retry up to 3 times in case Open-Meteo has a brief transient timeout
-          for attempt in 1 2 3; do
-            if pixlet render capybara_clock.star "${ARGS[@]}" -o capybara_clock.webp; then
-              break
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "::error::pixlet render failed after 3 attempts."
-              exit 1
-            fi
-            echo "Render attempt ${attempt} failed (transient API timeout); retrying in 3s..."
-            sleep 3
-          done
+          pixlet render capybara_clock.star "${ARGS[@]}" -o capybara_clock.webp
           ls -lh capybara_clock.webp
 
       - name: Push WebP to Tidbyt device

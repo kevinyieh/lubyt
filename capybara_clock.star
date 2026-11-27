@@ -315,21 +315,29 @@ def resolve_sprite_state(weather_type, is_night, is_cold):
 # Main Render Entrypoint
 # ---------------------------------------------------------------------------
 def main(config):
-    lat, lon, timezone = resolve_location(config)
     use_24h = config.bool("use_24h", False)
     temp_unit = config.str("temp_unit", DEFAULT_TEMP_UNIT)
     debug_weather = config.str("debug_weather", "auto")
     debug_tod = config.str("debug_time_of_day", "auto")
     debug_temp = config.str("debug_temp", "auto")
-
-    # Live weather + today's sunrise/sunset + exact local timezone from Open-Meteo
-    weather = fetch_weather(lat, lon, timezone, temp_unit)
-
-    # Prefer explicit user timezone override; otherwise use Open-Meteo's auto-detected
-    # IANA timezone for (lat, lon) so the displayed clock always matches your coordinates.
     tz_override = (config.str("timezone") or "").strip()
-    if not tz_override and weather != None and weather.get("timezone"):
-        timezone = weather.get("timezone")
+
+    # Optional pre-fetched weather JSON passed by CI (e.g. GitHub Actions 15-min cache)
+    # so 1-minute clock pushes never stall or fail on transient Open-Meteo timeouts.
+    weather_json_raw = (config.str("weather_json") or "").strip()
+    if weather_json_raw:
+        weather = None if weather_json_raw == "none" else json.decode(weather_json_raw)
+        weather_tz = weather.get("timezone", "") if weather != None else ""
+        timezone = tz_override or weather_tz or config.get("$tz") or DEFAULT_TIMEZONE
+    else:
+        lat, lon, timezone = resolve_location(config)
+        # Live weather + today's sunrise/sunset + exact local timezone from Open-Meteo
+        weather = fetch_weather(lat, lon, timezone, temp_unit)
+
+        # Prefer explicit user timezone override; otherwise use Open-Meteo's auto-detected
+        # IANA timezone for (lat, lon) so the displayed clock always matches your coordinates.
+        if not tz_override and weather != None and weather.get("timezone"):
+            timezone = weather.get("timezone")
 
     # Current local time (optional clock_offset_sec lets automated CI pre-render
     # the upcoming minute ~15s early so Tidbyt flips right at :00!)

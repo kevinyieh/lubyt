@@ -323,7 +323,24 @@ def main() -> None:
     assert is_cold_fn({"temp": 68.0}, "F") is False
     assert is_cold_fn({"temp": 8.0}, "C") is True   # 46.4°F
     assert is_cold_fn({"temp": 20.0}, "C") is False # 68.0°F
-    print("[PASS] Caching, auto sunset + cold/warm temp selection (F & C), & minimal HUD verified")
+
+    # Verify CI pre-fetched weather_json bypasses all HTTP calls (both valid JSON & "none" fallback)
+    calls_before = len(env["_http_calls"])
+    pre_wx = py_json.dumps({
+        "temp": 72.4, "code": 0, "wind": 5.0, "is_day": 1,
+        "sunrise": "06:30", "sunset": "20:15", "timezone": "America/New_York",
+    })
+    root_pre = env["main"](MockConfig({"weather_json": pre_wx, "temp_unit": "F"}))
+    assert len(env["_http_calls"]) == calls_before, "weather_json must not make HTTP calls!"
+    pre_hud = root_pre.props["child"].props["children"][1].props["child"].props["child"].props["children"]
+    assert [t.props["content"] for t in pre_hud] == ["7:09", "72°"]
+    assert root_pre.props["child"].props["children"][0].props["src"] == (ASSETS_DIR / "clear_day_warm.gif").read_bytes()
+
+    root_none = env["main"](MockConfig({"weather_json": "none", "temp_unit": "F"}))
+    assert len(env["_http_calls"]) == calls_before, "weather_json='none' must not make HTTP calls!"
+    none_hud = root_none.props["child"].props["children"][1].props["child"].props["child"].props["children"]
+    assert [t.props["content"] for t in none_hud] == ["7:09", "--°"]
+    print("[PASS] Caching, pre-fetched weather_json (0 HTTP calls), auto sunset + cold/warm temp selection (F & C), & minimal HUD verified")
 
     # Verify all 28 GIFs + WebPs
     sprites_b64: Dict[str, str] = env["SPRITES_B64"]
